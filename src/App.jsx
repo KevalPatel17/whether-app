@@ -88,13 +88,12 @@ export default function App() {
         humidity: data.main.humidity,
         wind_speed: data.wind.speed,
         response_time_ms: responseTime,
-        total_roundtrip_ms: responseTime, // For Normal API, these are the same
-        server_location: "Origin Server (Global API)",
+        server_location: "Origin Server (US)",
         request_type: "normal"
       };
 
-      // Log to Supabase (Background)
-      supabase.from('api_logs').insert({
+      // Log to Supabase
+      await supabase.from('api_logs').insert({
         request_type: 'normal',
         city: result.city,
         response_time_ms: result.response_time_ms,
@@ -110,19 +109,11 @@ export default function App() {
 
   // --- Edge Function Route ---
   const fetchWeatherEdge = async (cityName) => {
-    const startTime = Date.now();
     try {
       const response = await fetch(`${EDGE_FUNCTION_URL}?city=${cityName}`);
       const data = await response.json();
-      const totalTime = Date.now() - startTime;
-
       if (data.error) throw new Error(data.error);
-      
-      return {
-        ...data,
-        total_roundtrip_ms: totalTime,
-        internal_response_time_ms: data.response_time_ms
-      };
+      return data;
     } catch (err) {
       console.error("Edge Fetch Error:", err);
       throw err;
@@ -149,8 +140,8 @@ export default function App() {
       
       const newComparison = {
         city: normal.city,
-        normalTime: normal.total_roundtrip_ms,
-        edgeTime: edge.total_roundtrip_ms,
+        normalTime: normal.response_time_ms,
+        edgeTime: edge.response_time_ms,
         timestamp: Date.now()
       };
 
@@ -208,8 +199,8 @@ export default function App() {
     }
   };
 
-  const isEdgeFaster = normalResult && edgeResult && edgeResult.total_roundtrip_ms < normalResult.total_roundtrip_ms;
-  const isNormalFaster = normalResult && edgeResult && normalResult.total_roundtrip_ms < edgeResult.total_roundtrip_ms;
+  const isEdgeFaster = normalResult && edgeResult && edgeResult.response_time_ms < normalResult.response_time_ms;
+  const isNormalFaster = normalResult && edgeResult && normalResult.response_time_ms < edgeResult.response_time_ms;
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-12">
@@ -311,13 +302,13 @@ export default function App() {
               <div className="space-y-3 pt-4 border-t border-white/5">
                 <div className="flex justify-between items-end">
                   <div className="text-slate-500 text-sm flex items-center gap-2">
-                    <Timer size={16} /> Total Latency
+                    <Timer size={16} /> Response Time
                   </div>
-                  <div className="text-3xl font-black text-orange-500 leading-none">{normalResult.total_roundtrip_ms} <span className="text-sm font-normal text-slate-500">ms</span></div>
+                  <div className="text-3xl font-black text-orange-500 leading-none">{normalResult.response_time_ms} <span className="text-sm font-normal text-slate-500">ms</span></div>
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <div className="text-slate-500 flex items-center gap-2">
-                    <Navigation size={16} /> Infrastructure
+                    <Navigation size={16} /> Server Location
                   </div>
                   <div className="text-slate-300 font-medium">{normalResult.server_location}</div>
                 </div>
@@ -382,19 +373,13 @@ export default function App() {
               <div className="space-y-3 pt-4 border-t border-white/5">
                 <div className="flex justify-between items-end">
                   <div className="text-slate-500 text-sm flex items-center gap-2">
-                    <Timer size={16} /> Total Roundtrip
+                    <Timer size={16} /> Response Time
                   </div>
-                  <div className="text-3xl font-black text-teal-500 leading-none">{edgeResult.total_roundtrip_ms} <span className="text-sm font-normal text-slate-500">ms</span></div>
-                </div>
-                <div className="flex justify-between items-center text-xs">
-                  <div className="text-slate-500 flex items-center gap-2">
-                    <Zap size={14} /> Edge Fetch Time
-                  </div>
-                  <div className="text-teal-500/70 font-medium">{edgeResult.internal_response_time_ms}ms</div>
+                  <div className="text-3xl font-black text-teal-500 leading-none">{edgeResult.response_time_ms} <span className="text-sm font-normal text-slate-500">ms</span></div>
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <div className="text-slate-500 flex items-center gap-2">
-                    <Navigation size={16} /> Edge Location
+                    <Navigation size={16} /> Server Location
                   </div>
                   <div className="text-teal-400 font-medium">{edgeResult.server_location}</div>
                 </div>
@@ -421,23 +406,23 @@ export default function App() {
                 <td className="px-6 py-4 text-slate-300 font-medium">Server Location</td>
                 <td className="px-6 py-4 text-slate-400">Fixed (Single Region)</td>
                 <td className="px-6 py-4 text-teal-300 font-semibold flex items-center gap-2">
-                  <Globe size={14} /> Nearest Edge Node
+                  <Globe size={14} /> Nearest to you
                 </td>
               </tr>
               <tr>
-                <td className="px-6 py-4 text-slate-300 font-medium">Internal Latency</td>
+                <td className="px-6 py-4 text-slate-300 font-medium">Response Time</td>
                 <td className="px-6 py-4 text-orange-300">{normalResult ? `${normalResult.response_time_ms}ms` : '--'}</td>
-                <td className="px-6 py-4 text-teal-300">{edgeResult ? `${edgeResult.internal_response_time_ms}ms` : '--'}</td>
+                <td className="px-6 py-4 text-teal-300">{edgeResult ? `${edgeResult.response_time_ms}ms` : '--'}</td>
               </tr>
               <tr>
-                <td className="px-6 py-4 text-slate-300 font-medium">Total Roundtrip</td>
-                <td className="px-6 py-4 text-orange-400">{normalResult ? `${normalResult.total_roundtrip_ms}ms` : '--'}</td>
-                <td className="px-6 py-4 text-teal-400 font-bold">{edgeResult ? `${edgeResult.total_roundtrip_ms}ms` : '--'}</td>
+                <td className="px-6 py-4 text-slate-300 font-medium">Scalability</td>
+                <td className="px-6 py-4 text-slate-400">Vertical/Horizontal scaling</td>
+                <td className="px-6 py-4 text-slate-300">Instant (Auto-scaling)</td>
               </tr>
               <tr>
-                <td className="px-6 py-4 text-slate-300 font-medium">Cold Start Impact</td>
-                <td className="px-6 py-4 text-slate-400">None (Persistent)</td>
-                <td className="px-6 py-4 text-slate-300">~50-200ms (Initial)</td>
+                <td className="px-6 py-4 text-slate-300 font-medium">Cold Start</td>
+                <td className="px-6 py-4 text-slate-400">N/A (Persistent)</td>
+                <td className="px-6 py-4 text-slate-300">~50ms (First call)</td>
               </tr>
               <tr>
                 <td className="px-6 py-4 text-slate-300 font-medium">Best For</td>
